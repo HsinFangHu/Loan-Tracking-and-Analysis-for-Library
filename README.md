@@ -25,9 +25,9 @@ Identify Late Returns and Fines: Analyze late returns, fines, and outstanding fi
 <br>
 
 ## Database Design & ERD Diagram
-There are 4 following .csv files, each containing critical data that the library has collected:
-Address.csv
-Book.csv
-Patron.csv
-Loan_Trans.csv 
+There are 4 following .csv files, each containing critical data that the library has collected:<br>
+Address.csv<br>
+Book.csv<br>
+Patron.csv<br>
+Loan_Trans.csv <br>
 <img width="451" alt="image" src="https://github.com/HsinFangHu/Loan-Tracking-and-Analysis-for-Library/assets/135067776/8a79dd66-ce91-4684-b8fe-4d33087eeaaf">
