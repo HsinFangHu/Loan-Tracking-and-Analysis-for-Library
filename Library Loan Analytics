@@ -1,0 +1,205 @@
+--Database Setup and Connection
+--Table Creation & Relationships between Tables & Data Import
+CREATE TABLE Book (
+    call_no INT PRIMARY KEY,
+    title VARCHAR(255),
+    subject VARCHAR(255)
+);
+
+CREATE TABLE Patron (
+    patron_id INT PRIMARY KEY,
+    first_name VARCHAR(255),
+    last_name VARCHAR(255),
+    date_of_birth DATE
+);
+
+CREATE TABLE Address (
+    address_id INT PRIMARY KEY,
+    patron_id INT,
+    address VARCHAR(255),
+    FOREIGN KEY (patron_id) REFERENCES Patron(patron_id)
+);
+
+CREATE TABLE Loan_Trans (
+    trans_id INT PRIMARY KEY,
+    patron_id INT,
+    call_no INT,
+    loan_fee INT,
+    loan_fee_paid VARCHAR(255),
+    date_checked_out DATE,
+    date_returned DATE,
+    FOREIGN KEY (call_no) REFERENCES Book(call_no),
+    FOREIGN KEY (patron_id) REFERENCES Patron(patron_id)
+);
+
+--Observe the age composition of library patrons
+CREATE TABLE Senior AS
+SELECT *
+FROM Patron
+WHERE strftime('%Y', 'now') - strftime('%Y', date_of_birth) > 50;
+SELECT COUNT(*) AS Senior_count
+FROM Senior;
+
+CREATE TABLE Young_adulthood AS
+SELECT *
+FROM Patron
+WHERE strftime('%Y', 'now') - strftime('%Y', date_of_birth) < 35;
+SELECT COUNT(*) AS Senior_count
+FROM Young_adulthood;
+
+CREATE TABLE Middle AS
+SELECT *
+FROM Patron
+WHERE strftime('%Y', 'now') - strftime('%Y', date_of_birth) >= 35
+  AND strftime('%Y', 'now') - strftime('%Y', date_of_birth) <= 50;
+SELECT COUNT(*) AS Senior_count
+FROM Middle;
+
+SELECT
+    (SELECT COUNT(*) FROM Senior) AS senior_count,
+    (SELECT COUNT(*) FROM Young_adulthood) AS young_adult_count,
+    (SELECT COUNT(*) FROM Middle) AS middle_count;
+
+--Explore book subjects
+SELECT title, subject
+FROM Book;
+
+SELECT DISTINCT subject
+FROM Book;
+
+SELECT title
+FROM Book
+WHERE subject = 'Advertising';
+
+--Library loan transactions
+SELECT *
+FROM Loan_Trans
+WHERE loan_fee > 5
+AND loan_fee_paid = 'no';
+
+SELECT *
+FROM Patron
+WHERE patron_id IN (
+    SELECT patron_id
+    FROM Loan_Trans
+    WHERE date_returned = 'null'
+);
+
+SELECT DISTINCT Patron.patron_id, Patron.first_name, Patron.last_name
+FROM Patron
+INNER JOIN Loan_Trans ON Patron.patron_id = Loan_Trans.patron_id
+WHERE Loan_Trans.loan_fee_paid = 'yes' AND Loan_Trans.date_returned != 'null';
+
+SELECT COUNT(*) AS Total_outstanding_books
+FROM Loan_Trans
+WHERE date_returned = 'null';
+
+SELECT SUM(loan_fee) AS Total_loan_fees_collected
+FROM Loan_Trans
+WHERE loan_fee_paid = 'yes';
+
+SELECT AVG(loan_fee) AS average_fine_collected
+FROM Loan_Trans
+WHERE loan_fee_paid = 'yes';
+
+SELECT COUNT(*) AS Total_late_books
+FROM Loan_Trans
+WHERE julianday(date_returned) > julianday(date_checked_out, '+10 days');
+
+--Library loan transactions: the amount each patron owes
+SELECT DATE('2023-06-07') AS current_date;
+
+SELECT Patron.patron_id, Patron.first_name, Patron.last_name,
+CAST(SUM(COALESCE(julianday(date_returned), julianday(date('2023-06-07'))) - julianday(date_checked_out) - 10) AS INTEGER) AS total_days_late
+FROM Patron
+JOIN Loan_Trans ON Patron.patron_id = Loan_Trans.patron_id
+WHERE date_returned = 'null' OR julianday(date_returned) > julianday(date_checked_out, '+10 days')
+GROUP BY Patron.patron_id, Patron.first_name, Patron.last_name;
+
+SELECT Loan_Trans.trans_id,
+CAST(SUM(COALESCE(julianday(date_returned), julianday(date('2023-06-07'))) - julianday(date_checked_out) - 10) AS INTEGER) AS total_days_late
+FROM Loan_Trans
+WHERE date_returned = 'null' OR julianday(date_returned) > julianday(date_checked_out, '+10 days')
+GROUP BY Loan_Trans.trans_id
+
+SELECT Patron.patron_id, Patron.first_name, Patron.last_name,
+       CASE
+           WHEN Loan_Trans.loan_fee_paid = 'no' THEN Loan_Trans.loan_fee + (total_days_late * 5)
+           ELSE total_days_late * 5
+       END AS amount_owed
+FROM Loan_Trans
+JOIN (
+     SELECT Loan_Trans.trans_id,
+       CAST(SUM(COALESCE(julianday(date_returned), julianday(date('2023-06-07'))) - julianday(date_checked_out) - 10) AS INTEGER) AS total_days_late
+     FROM Loan_Trans
+     WHERE date_returned = 'null' OR julianday(date_returned) > julianday(date_checked_out, '+10 days')
+     GROUP BY Loan_Trans.trans_id
+     ) AS LateInfo ON Loan_Trans.trans_id = LateInfo.trans_id
+JOIN Patron ON Loan_Trans.patron_id = Patron.patron_id
+GROUP BY Loan_Trans.patron_id;
+
+--Library table exploration
+SELECT patron_id, SUM(loan_fee) AS total_loan_fees_paid
+FROM Loan_Trans
+WHERE loan_fee_paid = 'yes'
+GROUP BY patron_id;
+
+SELECT strftime('%m', date_checked_out) AS checkout_month, COUNT(*) AS total_checked_out
+FROM Loan_Trans
+WHERE strftime('%Y', date_checked_out) = '2021'
+GROUP BY checkout_month;
+
+SELECT Book.subject, COUNT(*) AS total_books_on_loan
+FROM Loan_Trans
+JOIN Book ON Loan_Trans.call_no = Book.call_no
+GROUP BY Book.subject;
+
+SELECT Patron.first_name, Patron.last_name, Patron.patron_id, Loan_Trans.call_no
+FROM Patron
+JOIN Loan_Trans ON Patron.patron_id = Loan_Trans.patron_id
+ORDER BY Patron.last_name ASC, Patron.first_name ASC;
+
+SELECT
+  Patron.patron_id,
+  Patron.first_name,
+  Patron.last_name,
+  Address.address,
+  CASE
+      WHEN Loan_Trans.loan_fee_paid = 'no' THEN Loan_Trans.loan_fee + (total_days_late * 5)
+      ELSE total_days_late * 5
+  END AS amount_owed
+FROM Loan_Trans
+JOIN (
+    SELECT Loan_Trans.trans_id,
+    CAST(SUM(COALESCE(julianday(date_returned), julianday(date('2023-06-07'))) - julianday(date_checked_out) - 10) AS INTEGER) AS total_days_late
+    FROM Loan_Trans
+    WHERE Loan_Trans.date_returned ='null' OR julianday(date_returned) > julianday(date_checked_out, '+10 days')
+    GROUP BY Loan_Trans.trans_id
+    ) AS LateInfo ON Loan_Trans.trans_id = LateInfo.trans_id
+JOIN Patron ON Loan_Trans.patron_id = Patron.patron_id
+JOIN Address ON Patron.patron_id = Address.patron_id
+GROUP BY Patron.patron_id
+ORDER BY Patron.last_name ASC, Patron.first_name ASC;
+
+--Analysis for Strategic Decision- Making
+SELECT Book.title, Book.subject, COUNT(Loan_Trans.call_no) AS loan_count
+FROM Book
+JOIN Loan_Trans ON Book.call_no = Loan_Trans.call_no
+GROUP BY Book.title
+ORDER BY loan_count DESC, Book.subject DESC;
+
+SELECT strftime('%m', date_checked_out) AS checkout_month, COUNT(*) AS checkout_count
+FROM Loan_Trans
+GROUP BY checkout_month
+ORDER BY checkout_count DESC;
+
+SELECT Patron.patron_id, Patron.first_name, Patron.last_name
+FROM Patron
+LEFT JOIN Loan_Trans ON Patron.patron_id = Loan_Trans.patron_id
+WHERE Loan_Trans.patron_id IS NULL;
+
+SELECT strftime('%Y-%m', date_checked_out) AS checkout_month, COUNT(*) AS rental_count
+FROM Loan_Trans
+WHERE date_checked_out BETWEEN '2021-01-01' AND '2022-12-31'
+GROUP BY checkout_month
+ORDER BY checkout_month ASC;
